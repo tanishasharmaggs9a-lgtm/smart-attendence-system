@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Attendance System</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap');
+        body { font-family: 'Poppins', sans-serif; }
+        .gradient-bg { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
+        .card-hover { transition: all 0.3s ease; }
+        .card-hover:hover { transform: translateY(-8px); box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25); }
+        .nav-btn.active { background-color: white; color: #4f46e5; }
+        #faceScanModal video, #qr-reader video { transform: scaleX(-1); }
+        #faceScanModal canvas { position: absolute; top: 0; left: 0; }
+        #qr-reader { border: 4px solid #3b82f6; border-radius: 8px; overflow: hidden; }
+        .success-bounce { animation: success-bounce 0.6s ease-in-out; }
+        @keyframes success-bounce { 0%, 20%, 53%, 80%, 100% { transform: translate3d(0,0,0); } 40%, 43% { transform: translate3d(0, -30px, 0); } 70% { transform: translate3d(0, -15px, 0); } 90% { transform: translate3d(0, -4px, 0); } }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-blue-50 to-indigo-100 min-h-screen">
+    <header class="gradient-bg text-white shadow-2xl sticky top-0 z-40">
+        <div class="container mx-auto px-6 py-4">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-4">
+                    <div class="w-14 h-14 bg-white rounded-xl flex items-center justify-center shadow-lg"><span class="text-3xl">🎓</span></div>
+                    <div>
+                        <h1 class="text-3xl font-bold">Smart Attendance System</h1>
+                        <p class="text-lg opacity-90" id="dashboard-subtitle">Teacher Dashboard</p>
+                    </div>
+                </div>
+                <div class="bg-white/20 p-1 rounded-xl flex space-x-1">
+                    <button id="nav-teacher" onclick="switchView('teacher')" class="nav-btn px-5 py-2 rounded-lg font-semibold transition-all">👨‍🏫 Teacher</button>
+                    <button id="nav-student" onclick="switchView('student')" class="nav-btn px-5 py-2 rounded-lg font-semibold transition-all">🎓 Student</button>
+                    <button id="nav-coordinator" onclick="switchView('coordinator')" class="nav-btn px-5 py-2 rounded-lg font-semibold transition-all">🏢 Coordinator</button>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <main>
+        <div id="teacherView" class="container mx-auto px-6 py-10">
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-8 mb-12">
+                 <div class="bg-white rounded-2xl shadow-xl p-8 card-hover border-l-4 border-green-500"><div><p class="text-gray-600 text-sm">Registered Students</p><p class="text-4xl font-bold text-green-600 mt-2" id="registeredCount">0</p></div></div>
+                 <div class="bg-white rounded-2xl shadow-xl p-8 card-hover border-l-4 border-red-500"><div><p class="text-gray-600 text-sm">Present Today</p><p class="text-4xl font-bold text-red-600 mt-2" id="presentCount">0</p></div></div>
+                <div class="bg-white rounded-2xl shadow-xl p-8 card-hover border-l-4 border-blue-500"><div><p class="text-gray-600 text-sm">Attendance Rate</p><p class="text-4xl font-bold text-blue-600 mt-2" id="attendanceRate">0%</p></div></div>
+                <div class="bg-white rounded-2xl shadow-xl p-8 card-hover border-l-4 border-purple-500"><div><p class="text-gray-600 text-sm">Session Time</p><p class="text-4xl font-bold text-purple-600 mt-2" id="sessionTime">00:00:00</p></div></div>
+            </div>
+             <div class="grid grid-cols-1 lg:grid-cols-4 gap-8 mb-12">
+                <div class="bg-white rounded-2xl shadow-2xl p-8 card-hover text-center flex flex-col justify-between">
+                    <h3 class="text-2xl font-bold mb-6">Face Registration</h3>
+                    <div class="w-40 h-40 mx-auto mb-6 bg-gradient-to-br from-green-100 to-blue-100 rounded-full flex items-center justify-center text-5xl">📷</div>
+                    <button onclick="registerFace()" class="w-full bg-blue-500 text-white p-3 rounded-xl shadow-lg text-sm">➕ Register New Student</button>
+                    <p class="text-sm text-gray-600 mt-3" id="faceStatus">Initializing...</p>
+                </div>
+                <div class="bg-white rounded-2xl shadow-2xl p-8 card-hover text-center flex flex-col justify-between">
+                    <h3 class="text-2xl font-bold mb-6">Live Location</h3>
+                    <div class="w-40 h-40 mx-auto mb-6 bg-gradient-to-br from-purple-100 to-pink-100 rounded-full flex items-center justify-center text-5xl">📍</div>
+                    <button onclick="enableLiveLocation()" class="bg-purple-500 text-white p-3 rounded-xl shadow-lg w-full">Enable Live Location</button>
+                    <p class="text-sm text-gray-600 mt-3" id="locationStatus">Location not enabled</p>
+                </div>
+                <div class="bg-white rounded-2xl shadow-2xl p-8 card-hover text-center">
+                    <h3 class="text-2xl font-bold mb-6">Dynamic QR</h3>
+                    <div id="unifiedQR" class="w-40 h-40 mx-auto mb-2 bg-gray-100 rounded-xl flex items-center justify-center p-2"><div class="text-4xl">📱</div></div>
+                    <div id="qrInfoContainer" class="mb-2" style="display: none;"><p class="text-sm">Secret Code: <span id="secretCode" class="font-bold text-2xl text-indigo-600 tracking-widest"></span></p><p class="text-xs">Refreshing in: <span id="qrTimer" class="font-bold text-red-500">60s</span></p></div>
+                    <div id="lastCheckInInfo" class="mt-2 text-sm text-green-700 font-semibold h-4"></div>
+                    <select id="unifiedTeacherSelect" class="w-full p-2 border rounded-lg mb-4 text-sm mt-2"><option value="">Choose your lecture</option></select>
+                    <div class="grid grid-cols-2 gap-2"><button id="qrGenBtn" onclick="generateUnifiedQR()" class="bg-blue-500 text-white p-2 rounded-xl shadow-lg text-sm">🔗 Generate</button><button id="qrOffBtn" onclick="turnOffUnifiedQR()" class="bg-red-500 text-white p-2 rounded-xl shadow-lg text-sm" style="display: none;">🔚 Turn OFF</button></div>
+                </div>
+                 <div class="bg-white rounded-2xl shadow-2xl p-8 card-hover"><h3 class="text-2xl font-bold mb-6">Assignment Management</h3><div class="space-y-3"><input type="text" id="assignmentTitle" placeholder="Assignment Title" class="w-full p-2 border rounded-lg text-sm"><select id="assignmentSubject" class="w-full p-2 border rounded-lg text-sm"><option value="">Select Subject</option></select><input type="date" id="assignmentDueDate" class="w-full p-2 border rounded-lg text-sm">
+                 <input type="file" id="assignmentFile" class="w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-violet-50 file:text-violet-700 hover:file:bg-violet-100">
+                 <button onclick="uploadAssignment()" class="w-full bg-indigo-600 text-white p-3 rounded-xl shadow-lg text-sm">Upload Assignment</button></div></div>
+            </div>
+            <div class="bg-white rounded-2xl shadow-2xl p-8"><h3 class="text-2xl font-bold mb-6">Student Roster</h3><div id="liveRoster" class="space-y-3 max-h-96 overflow-y-auto"><p class="text-center py-4 text-gray-500">No students registered yet.</p></div></div>
+        </div>
+
+        <div id="studentView" class="hidden container mx-auto px-6 py-10">
+             <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                <div class="lg:col-span-1 space-y-8">
+                    <div class="bg-white rounded-2xl shadow-2xl p-8 text-center"><img src="https://placehold.co/100x100/667eea/ffffff?text=S" alt="Avatar" class="w-24 h-24 rounded-full mx-auto mb-4" id="studentAvatar"/><h3 id="studentName" class="text-xl font-bold">No Student</h3><p id="studentId" class="text-gray-500">Register a student first</p></div>
+                    <div class="bg-white rounded-2xl shadow-2xl p-8">
+                        <h4 class="font-bold mb-4">Mark My Attendance</h4>
+                        <button onclick="verifyStudentLocation()" id="verifyLocationBtn" class="w-full bg-yellow-500 text-white p-4 rounded-xl shadow-lg mb-4">📍 Verify My Location</button>
+                        <div id="attendanceOptions" class="opacity-50 pointer-events-none">
+                            <button onclick="studentScanQR()" class="w-full bg-green-500 text-white p-4 rounded-xl shadow-lg mb-4">📷 Scan Lecture QR</button>
+                            <h4 class="font-bold mb-2 mt-4 pt-4 border-t">Manual Code Entry</h4>
+                            <div class="flex space-x-2"><input type="text" id="secretCodeInput" maxLength="4" placeholder="4-Digit Code" class="w-full p-2 border rounded-lg text-center tracking-widest" /><button onclick="handleSecretCodeSubmit()" class="bg-indigo-600 text-white p-2 rounded-lg">Submit</button></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="lg:col-span-2 space-y-8">
+                  <div class="bg-white rounded-2xl shadow-2xl p-8"><h3 class="text-2xl font-bold mb-6">My Assignments</h3><div id="studentAssignments" class="space-y-3 max-h-96 overflow-y-auto"><p class="text-center py-4 text-gray-500">No assignments posted.</p></div></div>
+                </div>
+            </div>
+        </div>
+
+        <div id="coordinatorView" class="hidden container mx-auto px-6 py-10">
+            <h2 class="text-3xl font-bold mb-6 text-gray-800">Coordinator Dashboard</h2>
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                <div class="bg-white rounded-2xl shadow-2xl p-8">
+                    <h3 class="text-2xl font-bold mb-6">Live Lecture Status</h3>
+                    <div id="liveStatusContainer" class="space-y-4">
+                    </div>
+                </div>
+                <div class="bg-white rounded-2xl shadow-2xl p-8">
+                    <h3 class="text-2xl font-bold mb-6">Weekly Timetable</h3>
+                    <div id="timetable" class="overflow-x-auto"></div>
+                </div>
+                 <div class="bg-white rounded-2xl shadow-2xl p-8">
+                    <h3 class="text-2xl font-bold mb-6">Subject-wise Attendance Report</h3>
+                    <div id="subjectAttendanceReport" class="space-y-4 max-h-[450px] overflow-y-auto"></div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <div id="infoModal" class="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50" style="display: none;"><div class="bg-white rounded-2xl p-10 max-w-md mx-4 success-bounce"><div class="text-center"><div class="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6 text-4xl" id="modalIcon">✅</div><h3 class="text-2xl font-bold mb-3" id="modalTitle"></h3><p class="text-gray-600 mb-6 text-lg" id="modalMessage"></p><button onclick="closeModal()" class="bg-green-500 hover:bg-green-600 text-white px-8 py-3 rounded-xl font-semibold">Continue</button></div></div></div>
+    <div id="faceScanModal" class="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50" style="display: none;"><div class="bg-white rounded-2xl p-8 text-center max-w-lg mx-4"><h3 class="text-2xl font-bold mb-4" id="faceScanTitle"></h3><p class="text-gray-600 mb-4" id="faceScanStatus"></p><div id="cameraView" class="relative w-96 h-72 mx-auto rounded-lg overflow-hidden shadow-lg bg-gray-200"><video id="video" width="384" height="288" autoplay muted></video><canvas id="canvas" class="absolute top-0 left-0"></canvas></div><div id="nameInputView" style="display: none;" class="w-96 h-72 mx-auto flex flex-col items-center justify-center space-y-4"><span class="text-6xl">👤</span><p class="font-semibold text-lg">Face Detected! Enter name.</p><input type="text" id="studentNameInput" placeholder="e.g., Tanisha Sharma" class="w-full p-3 border-2 rounded-xl text-center font-semibold text-lg"><button onclick="submitRegistration()" class="w-full bg-blue-500 hover:bg-blue-600 text-white p-3 rounded-xl font-semibold shadow-lg">Submit Name</button></div><button onclick="closeFaceScanner()" class="mt-6 bg-red-500 hover:bg-red-600 text-white px-8 py-3 rounded-xl font-semibold">Cancel</button></div></div>
+    <div id="qrScanModal" class="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50" style="display: none;"><div class="bg-white rounded-2xl p-8 max-w-lg mx-4 text-center"><h3 class="text-2xl font-bold mb-4">Scan Lecture QR Code</h3><div id="qr-reader" class="w-full md:w-96 mx-auto"></div><button onclick="closeQrScanner()" class="mt-6 bg-red-500 hover:bg-red-600 text-white px-8 py-3 rounded-xl font-semibold">Cancel Scan</button></div></div>
+    
+    <div id="submissionModal" class="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50" style="display: none;">
+        <div class="bg-white rounded-2xl p-8 max-w-lg mx-4 text-center">
+            <h3 class="text-2xl font-bold mb-4">Submit Your Assignment</h3>
+            <p id="submissionModalTitle" class="text-gray-600 mb-4"></p>
+            <input type="file" id="studentSubmissionFile" class="w-full mb-4 text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-violet-50 file:text-violet-700 hover:file:bg-violet-100">
+            <input type="hidden" id="submissionAssignmentId">
+            <div class="flex justify-center space-x-4">
+                <button onclick="handleFinalSubmission()" class="bg-green-500 hover:bg-green-600 text-white px-8 py-3 rounded-xl font-semibold">Submit</button>
+                <button onclick="closeSubmissionModal()" class="bg-red-500 hover:bg-red-600 text-white px-8 py-3 rounded-xl font-semibold">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let students = [];
+        const teachers = [ { id: 'T001', name: 'Dr. Harshita', subject: 'Data Structure', subjectCode: 'BCS301', lectureTime: '08:45' }, { id: 'T002', name: 'Dr. Sandeep', subject: 'Computer org. & architecture', subjectCode: 'BCS302', lectureTime: '09:45' }, { id: 'T003', name: 'Dr. Suresh', subject: 'Energy Science', subjectCode: 'BOE304', lectureTime: '10:45' }, { id: 'T004', name: 'Ms. Akanksha', subject: 'Technical Communication', subjectCode: 'BAS302', lectureTime: '11:45' }, { id: 'T005', name: 'Ms. Gaurisha', subject: 'Python', subjectCode: 'BCC302', lectureTime: '13:30' }, { id: 'T006', name: 'Ms. Ashi', subject: 'DSTL', subjectCode: 'BCS303', lectureTime: '14:30' } ];
+        let assignments = [];
+        let submissions = [];
+        
+        let studentIdCounter = 1;
+        let attendanceRecords = [], sessionStartTime = new Date();
+        let modelsLoaded = false, faceScanInterval = null, videoStream = null, registeredFaceData = [], detectedDescriptor = null;
+        let qrCodeActive = false, activeLectureData = null, html5QrCode = null, qrRefreshInterval = null, qrCountdownInterval = null;
+        let teacherLocation = null;
+
+        window.onload = () => {
+            initializeSystem();
+            loadFaceApiModels();
+        };
+
+        function initializeSystem() {
+            switchView('teacher');
+            updateStats();
+            updateLiveRoster();
+            populateTeacherDropdowns();
+            renderStudentAssignments();
+            renderCoordinatorView();
+            setInterval(updateSessionTime, 1000);
+            updateLiveStatus();
+            setInterval(updateLiveStatus, 60000);
+        }
+
+        async function loadFaceApiModels() {
+            const faceStatusEl = document.getElementById('faceStatus');
+            faceStatusEl.textContent = 'Loading AI Models...';
+            try {
+                await Promise.all([
+                    faceapi.nets.tinyFaceDetector.loadFromUri('./models'),
+                    faceapi.nets.faceLandmark68Net.loadFromUri('./models'),
+                    faceapi.nets.faceRecognitionNet.loadFromUri('./models')
+                ]);
+                modelsLoaded = true;
+                faceStatusEl.textContent = 'Models Loaded. Ready.';
+                updateFaceStatus();
+            } catch (error) {
+                modelsLoaded = false;
+                console.error('CRITICAL: FAILED TO LOAD MODELS.', error);
+                faceStatusEl.textContent = 'Error: Could not load AI models.';
+                showModal('AI Model Error', "Could not load face models. Check the Developer Console (F12) for details. Make sure you are running this on a local server.", '❌');
+            }
+        }
+
+        function updateFaceStatus() { 
+            if (modelsLoaded) {
+                document.getElementById('faceStatus').textContent = `${students.length} student(s) registered. Ready.`;
+            }
+        }
+        
+        function registerFace() {
+            if (!modelsLoaded) { 
+                showModal('AI Not Ready', "Face models failed to load. Please check the console (F12) for errors.", '❌'); 
+                return; 
+            }
+            startCamera((detection) => {
+                if (registeredFaceData.length > 0) {
+                    const faceMatcher = new faceapi.FaceMatcher(registeredFaceData, 0.5);
+                    const bestMatch = faceMatcher.findBestMatch(detection.descriptor);
+                    if (bestMatch.label !== 'unknown') {
+                        showModal('Duplicate Face', `This face seems to be already registered as ${bestMatch.label}.`, '❌');
+                        closeFaceScanner();
+                        return;
+                    }
+                }
+                detectedDescriptor = detection.descriptor;
+                document.getElementById('faceScanStatus').textContent = 'Face Captured!';
+                document.getElementById('cameraView').style.display = 'none';
+                document.getElementById('nameInputView').style.display = 'flex';
+                document.getElementById('studentNameInput').focus();
+            }, "Register New Student");
+        }
+        
+        async function startCamera(onFaceDetectedCallback, title) {
+            const modal = document.getElementById('faceScanModal');
+            modal.querySelector('#faceScanTitle').textContent = title;
+            modal.querySelector('#cameraView').style.display = 'block';
+            modal.querySelector('#nameInputView').style.display = 'none';
+            modal.style.display = 'flex';
+
+            try {
+                const video = document.getElementById('video');
+                videoStream = await navigator.mediaDevices.getUserMedia({ video: {} });
+                video.srcObject = videoStream;
+
+                video.onplay = () => {
+                    const canvas = document.getElementById('canvas');
+                    faceapi.matchDimensions(canvas, { width: video.width, height: video.height });
+                    document.getElementById('faceScanStatus').textContent = 'Searching for face...';
+
+                    faceScanInterval = setInterval(async () => {
+                        const detection = await faceapi.detectSingleFace(video, new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks().withFaceDescriptor();
+                        if (detection) {
+                            clearInterval(faceScanInterval);
+                            onFaceDetectedCallback(detection);
+                        }
+                    }, 200);
+                };
+            } catch (err) {
+                showModal('Camera Error', 'Could not access the camera. Check permissions and console (F12).', '❌');
+                closeFaceScanner();
+            }
+        }
+
+        function submitRegistration() {
+            const nameInput = document.getElementById('studentNameInput');
+            const name = nameInput.value.trim();
+            if (!name) { showModal('Error', 'Please enter a name.', '❌'); return; }
+            if (students.some(s => s.name.toLowerCase() === name.toLowerCase())) { showModal('Already Registered', `${name} is already registered.`, '❌'); return; }
+
+            const newStudentId = `ST${String(studentIdCounter++).padStart(3, '0')}`;
+            const newStudent = { id: newStudentId, name: name };
+            students.push(newStudent);
+            
+            registeredFaceData.push(new faceapi.LabeledFaceDescriptors(name, [detectedDescriptor]));
+            
+            updateStats();
+            updateLiveRoster();
+            updateFaceStatus();
+            renderCoordinatorView();
+            
+            showModal('Success!', `${name} has been registered with ID ${newStudentId}.`);
+            closeFaceScanner();
+        }
+
+        function closeFaceScanner() { 
+            clearInterval(faceScanInterval); 
+            if (videoStream) {
+                videoStream.getTracks().forEach(track => track.stop());
+            }
+            document.getElementById('faceScanModal').style.display = 'none'; 
+            document.getElementById('studentNameInput').value = ''; 
+        }
+        
+        function enableLiveLocation() {
+            const statusEl = document.getElementById('locationStatus');
+            if (!navigator.geolocation) { statusEl.textContent = 'Geolocation not supported.'; return; }
+            statusEl.textContent = 'Getting location...';
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    teacherLocation = { lat: position.coords.latitude, lon: position.coords.longitude };
+                    const lat = teacherLocation.lat.toFixed(4);
+                    const lon = teacherLocation.lon.toFixed(4);
+                    statusEl.textContent = `Lat: ${lat}, Lon: ${lon}`;
+                    showModal('Location Enabled', `Teacher location set to Lat: ${lat}, Lon: ${lon}`, '📍');
+                },
+                () => { statusEl.textContent = 'Unable to retrieve location.'; showModal('Location Error', 'Permission denied.', '❌'); }
+            );
+        }
+
+        function verifyStudentLocation() {
+            if (!teacherLocation) { showModal('Teacher Not Ready', 'The teacher has not enabled their location yet.', 'ℹ️'); return; }
+            const btn = document.getElementById('verifyLocationBtn');
+            btn.textContent = 'Verifying...';
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    const studentLocation = { lat: position.coords.latitude, lon: position.coords.longitude };
+                    const distance = calculateDistance(teacherLocation.lat, teacherLocation.lon, studentLocation.lat, studentLocation.lon);
+                    if (distance < 100) { 
+                        showModal('Location Verified!', 'You are in the classroom. Attendance options are now unlocked.', '✅');
+                        const attendanceOptions = document.getElementById('attendanceOptions');
+                        attendanceOptions.classList.remove('opacity-50', 'pointer-events-none');
+                        btn.style.display = 'none';
+                    } else {
+                        showModal('Location Mismatch', `You seem to be about ${Math.round(distance)} meters away. You must be in the classroom.`, '❌');
+                        btn.textContent = '📍 Verify My Location';
+                    }
+                },
+                () => { showModal('Location Error', 'Could not get your location.', '❌'); btn.textContent = '📍 Verify My Location';}
+            );
+        }
+
+        function calculateDistance(lat1, lon1, lat2, lon2) {
+            const R = 6371e3; 
+            const φ1 = lat1 * Math.PI/180; const φ2 = lat2 * Math.PI/180;
+            const Δφ = (lat2-lat1) * Math.PI/180; const Δλ = (lon2-lon1) * Math.PI/180;
+            const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ/2) * Math.sin(Δλ/2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+            return R * c;
+        }
+
+        function uploadAssignment() {
+            const title = document.getElementById('assignmentTitle').value;
+            const subject = document.getElementById('assignmentSubject').value;
+            const dueDate = document.getElementById('assignmentDueDate').value;
+            const fileInput = document.getElementById('assignmentFile');
+            const file = fileInput.files[0];
+
+            if (!title || !subject || !dueDate || !file) {
+                showModal('Missing Info', 'Please fill out all fields and select a file.', '❌');
+                return;
+            }
+            
+            const newAssignment = {
+                id: `ASG${assignments.length + 1}`,
+                title,
+                subject,
+                dueDate,
+                fileName: file.name
+            };
+            assignments.push(newAssignment);
+            
+            showModal('Assignment Uploaded!', `"${title}" has been posted.`);
+            renderStudentAssignments();
+            document.getElementById('assignmentTitle').value = '';
+            document.getElementById('assignmentDueDate').value = '';
+            fileInput.value = '';
+        }
+
+        function renderStudentAssignments() {
+            const container = document.getElementById('studentAssignments');
+            container.innerHTML = '';
+            if (assignments.length === 0) {
+                container.innerHTML = '<p class="text-center py-4 text-gray-500">No assignments posted.</p>';
+                return;
+            }
+            
+            assignments.forEach(assignment => {
+                const student = students.length > 0 ? students[0] : {id: null};
+                const submissionRecord = submissions.find(s => s.assignmentId === assignment.id && s.studentId === student.id);
+                
+                const item = document.createElement('div');
+                item.className = 'p-4 bg-gray-50 rounded-lg flex justify-between items-center';
+                
+                let html = `
+                    <div>
+                        <p class="font-bold">${assignment.title}</p>
+                        <p class="text-sm text-gray-600">Due: ${assignment.dueDate}</p>
+                        <p class="text-xs text-blue-600 font-semibold mt-1">File: ${assignment.fileName}</p>
+                    </div>`;
+                
+                if (submissionRecord) {
+                    html += `
+                        <div class="text-right">
+                            <span class="text-sm font-bold text-green-600">Submitted</span>
+                            <p class="text-xs text-gray-500">${submissionRecord.submittedFile}</p>
+                        </div>`;
+                } else {
+                    html += `<button onclick="openSubmissionModal('${assignment.id}', '${assignment.title}')" class="bg-blue-500 text-white px-3 py-1 rounded-lg text-sm">Submit</button>`;
+                }
+                item.innerHTML = html;
+                container.appendChild(item);
+            });
+        }
+        
+        function openSubmissionModal(assignmentId, assignmentTitle) {
+            if (students.length === 0) {
+                showModal('Error', 'No student is available to submit this.', '❌');
+                return;
+            }
+            document.getElementById('submissionModalTitle').textContent = `Submitting for: ${assignmentTitle}`;
+            document.getElementById('submissionAssignmentId').value = assignmentId;
+            document.getElementById('submissionModal').style.display = 'flex';
+        }
+
+        function closeSubmissionModal() {
+            document.getElementById('studentSubmissionFile').value = '';
+            document.getElementById('submissionModal').style.display = 'none';
+        }
+
+        function handleFinalSubmission() {
+            const studentId = students[0].id;
+            const assignmentId = document.getElementById('submissionAssignmentId').value;
+            const fileInput = document.getElementById('studentSubmissionFile');
+            const file = fileInput.files[0];
+
+            if (!file) {
+                showModal('No File', 'Please select a file to submit.', '❌');
+                return;
+            }
+
+            submissions.push({
+                studentId,
+                assignmentId,
+                submittedFile: file.name,
+                submittedAt: new Date()
+            });
+
+            closeSubmissionModal();
+            showModal('Assignment Submitted!', 'Your assignment has been submitted successfully.');
+            renderStudentAssignments();
+        }
+        
+        function generateUnifiedQR() { 
+            const tId=document.getElementById('unifiedTeacherSelect').value; 
+            if(!tId){showModal('Selection Required','Please choose a lecture.','❌');return} 
+            document.getElementById('lastCheckInInfo').innerHTML = '';
+            const t=teachers.find(t=>t.id===tId); 
+            activeLectureData={teacherId:t.id,subjectCode:t.subjectCode}; 
+            qrCodeActive=true; 
+            refreshQRCode(); 
+            qrRefreshInterval=setInterval(refreshQRCode,60000); 
+            document.getElementById('qrInfoContainer').style.display='block'; 
+            document.getElementById('qrGenBtn').style.display='none'; 
+            document.getElementById('qrOffBtn').style.display='block'
+        }
+        function refreshQRCode() { if(!qrCodeActive)return; const code=Math.floor(1000+Math.random()*9000).toString(); activeLectureData.timestamp=Date.now(); activeLectureData.secretCode=code; const qrContainer=document.getElementById('unifiedQR'); qrContainer.innerHTML=''; new QRCode(qrContainer,{text:JSON.stringify({ts:activeLectureData.timestamp,sc:activeLectureData.subjectCode}),width:144,height:144}); document.getElementById('secretCode').textContent=code; let count=60; const timerEl=document.getElementById('qrTimer'); timerEl.textContent=`${count}s`; clearInterval(qrCountdownInterval); qrCountdownInterval=setInterval(()=>{count--; timerEl.textContent=`${count}s`; if(count<=0)clearInterval(qrCountdownInterval)},1000)}
+        function turnOffUnifiedQR() { 
+            clearInterval(qrRefreshInterval); 
+            clearInterval(qrCountdownInterval); 
+            qrCodeActive=false; 
+            activeLectureData=null; 
+            document.getElementById('unifiedQR').innerHTML=`<div class="text-4xl">📱</div>`; 
+            document.getElementById('qrInfoContainer').style.display='none'; 
+            document.getElementById('qrGenBtn').style.display='block'; 
+            document.getElementById('qrOffBtn').style.display='none';
+            document.getElementById('lastCheckInInfo').innerHTML = '';
+        }
+        function studentScanQR() { if(students.length===0){showModal('No Students','No students are registered.','ℹ️');return} const modal=document.getElementById('qrScanModal'); modal.style.display='flex'; html5QrCode=new Html5Qrcode("qr-reader"); const sCb=(decodedText)=>{try{const data=JSON.parse(decodedText); if(qrCodeActive&&activeLectureData&&data.ts===activeLectureData.timestamp){markAttendance(students[0],`QR: ${activeLectureData.subjectCode}`)}else{showModal('Invalid QR','This QR is old or invalid.','❌')}}catch(e){showModal('Scan Error','Could not read this QR code.','❌')} closeQrScanner()}; html5QrCode.start({facingMode:"environment"},{fps:10,qrbox:250},sCb).catch(err=>{showModal('Camera Error','Could not start QR scanner.','❌');closeQrScanner()})}
+        function closeQrScanner() { if(html5QrCode&&html5QrCode.isScanning){html5QrCode.stop().catch(err=>console.error("Scanner stop failed",err))} document.getElementById('qrScanModal').style.display='none'}
+        function handleSecretCodeSubmit() { if(students.length===0){showModal('No Students','No students are registered.','ℹ️');return} const codeInput=document.getElementById('secretCodeInput'); if(!qrCodeActive){showModal('Inactive','No active attendance session.','❌');return} if(codeInput.value===activeLectureData.secretCode){markAttendance(students[0],`Code: ${activeLectureData.subjectCode}`); codeInput.value=''}else{showModal('Invalid Code','The code is incorrect or has expired.','❌')}}
+        function switchView(viewName) { document.querySelectorAll('main > div').forEach(div=>div.style.display='none'); document.querySelectorAll('.nav-btn').forEach(btn=>btn.classList.remove('active')); document.getElementById(`${viewName}View`).style.display='block'; document.getElementById(`nav-${viewName}`).classList.add('active'); document.getElementById('dashboard-subtitle').textContent=`${viewName.charAt(0).toUpperCase()+viewName.slice(1)} Dashboard`; if(viewName==='student')renderStudentView(); if(viewName==='coordinator')renderCoordinatorView()}
+        
+        function markAttendance(student,method) { 
+            if(attendanceRecords.some(r=>r.id===student.id)){showModal('Already Present',`${student.name} is already present.`,'ℹ️');return} 
+            const newRecord={id:student.id,name:student.name,timeIn:new Date().toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'}),method:method,subject:activeLectureData?.subjectCode||'General'}; 
+            attendanceRecords.push(newRecord); 
+            updateStats(); 
+            updateLiveRoster(); 
+            renderCoordinatorView(); 
+            showModal('Attendance Marked!',`Welcome, ${student.name}!`);
+            const lastCheckInEl = document.getElementById('lastCheckInInfo');
+            lastCheckInEl.innerHTML = `✅ ${student.name} at ${newRecord.timeIn}`;
+        }
+
+        function updateStats() { const registered=students.length; const present=attendanceRecords.length; const rate=registered>0?Math.round((present/registered)*100):0; document.getElementById('registeredCount').textContent=registered; document.getElementById('presentCount').textContent=present; document.getElementById('attendanceRate').textContent=`${rate}%`}
+        function updateLiveRoster() { const rosterEl=document.getElementById('liveRoster'); rosterEl.innerHTML=''; if(students.length===0){rosterEl.innerHTML='<p class="text-center py-4 text-gray-500">No students registered yet.</p>';return} students.forEach(student=>{const record=attendanceRecords.find(r=>r.id===student.id); const item=document.createElement('div'); item.className=`flex items-center justify-between p-3 rounded-lg ${record?'bg-green-50 border-l-4 border-green-500':'bg-gray-50 border-l-4 border-gray-400'}`; item.innerHTML=`<div><p class="font-bold">${student.name}</p><p class="text-xs text-gray-500">${student.id}</p></div>`; if(record){item.innerHTML+=`<div class="text-right"><p class="font-semibold text-green-700">Present</p><p class="text-xs">${record.timeIn} via ${record.method.split(':')[0]}</p></div>`}else{item.innerHTML+=`<p class="font-semibold text-gray-600">Not Marked</p>`} rosterEl.appendChild(item)})}
+        function populateTeacherDropdowns() { const select=document.getElementById('unifiedTeacherSelect'); const assignSelect=document.getElementById('assignmentSubject'); teachers.forEach(t=>{select.innerHTML+=`<option value="${t.id}">${t.subject} (${t.name})</option>`; assignSelect.innerHTML+=`<option value="${t.subjectCode}">${t.subject}</option>`})}
+        function updateSessionTime() { const diff=new Date()-sessionStartTime; const h=String(Math.floor(diff/36e5)).padStart(2,'0'); const m=String(Math.floor((diff%36e5)/6e4)).padStart(2,'0'); const s=String(Math.floor((diff%6e4)/1e3)).padStart(2,'0'); document.getElementById('sessionTime').textContent=`${h}:${m}:${s}`}
+        function renderStudentView() { if(students.length===0){document.getElementById('studentName').textContent="No Student"; document.getElementById('studentId').textContent="Register a student first"; return}; const student=students[0]; document.getElementById('studentName').textContent=student.name; document.getElementById('studentId').textContent=student.id; document.getElementById('studentAvatar').src=`https://placehold.co/100x100/667eea/ffffff?text=${student.name.charAt(0)}`; const record=attendanceRecords.find(r=>r.id===student.id); renderStudentAssignments()}
+        
+        function updateLiveStatus() {
+            const container = document.getElementById('liveStatusContainer');
+            if (!container) return;
+
+            const now = new Date();
+            const lectureDuration = 50 * 60 * 1000;
+
+            let activeLecture = null;
+            const scheduleWithTimes = teachers.map(t => {
+                const [hour, minute] = t.lectureTime.split(':');
+                const startTime = new Date();
+                startTime.setHours(hour, minute, 0, 0);
+                const endTime = new Date(startTime.getTime() + lectureDuration);
+                return { ...t, startTime, endTime };
+            }).sort((a, b) => a.startTime - b.startTime);
+
+            for (const lecture of scheduleWithTimes) {
+                if (now >= lecture.startTime && now < lecture.endTime) {
+                    activeLecture = lecture;
+                    break;
+                }
+            }
+
+            let html = ``;
+            if (activeLecture) {
+                html += `
+                    <div class="bg-green-50 border-l-4 border-green-500 p-4 rounded-lg">
+                        <p class="font-bold text-green-800">Active Lecture</p>
+                        <p class="text-lg font-semibold">${activeLecture.subject}</p>
+                        <p class="text-sm text-gray-600">${activeLecture.name}</p>
+                        <p class="text-xs text-gray-500">Ends at: ${activeLecture.endTime.toLocaleTimeString('en-US', {hour: '2-digit', minute: '2-digit'})}</p>
+                    </div>`;
+            } else {
+                html += `
+                    <div class="bg-gray-50 border-l-4 border-gray-400 p-4 rounded-lg">
+                        <p class="font-bold text-gray-800">No Active Lecture</p>
+                        <p class="text-sm text-gray-600">It's currently a free period.</p>
+                    </div>`;
+            }
+
+            const freePeriods = [];
+            for (let i = 0; i < scheduleWithTimes.length - 1; i++) {
+                const endCurrent = scheduleWithTimes[i].endTime;
+                const startNext = scheduleWithTimes[i+1].startTime;
+                if (startNext > endCurrent) {
+                    freePeriods.push(`<li>${endCurrent.toLocaleTimeString('en-US', {hour:'2-digit', minute:'2-digit'})} - ${startNext.toLocaleTimeString('en-US', {hour:'2-digit', minute:'2-digit'})}</li>`);
+                }
+            }
+            
+            html += `<div class="mt-4"><p class="font-bold text-gray-800 mb-2">Free Periods Today</p><ul class="list-disc list-inside text-sm text-gray-600">${freePeriods.join('')}</ul></div>`;
+
+            container.innerHTML = html;
+        }
+
+        function renderCoordinatorView() { 
+            const timetableEl=document.getElementById('timetable'); 
+            timetableEl.innerHTML=`<table class="w-full text-sm text-left"><thead class="bg-gray-100"><tr><th class="p-2">Time</th><th class="p-2">Subject</th><th class="p-2">Teacher</th></tr></thead><tbody>${teachers.map(t=>`<tr class="border-b"><td class="p-2 font-bold">${t.lectureTime}</td><td class="p-2">${t.subject}</td><td class="p-2">${t.name}</td></tr>`).join('')}</tbody></table>`; 
+            const reportEl=document.getElementById('subjectAttendanceReport'); 
+            reportEl.innerHTML=''; 
+            if(students.length===0){reportEl.innerHTML='<p class="text-center text-gray-500">No students registered to report on.</p>';return} 
+            students.forEach(student=>{
+                let studentHtml=`<div class="p-3 bg-gray-50 rounded-lg"><h4 class="font-bold text-lg">${student.name}</h4><div class="mt-2 space-y-1">`; 
+                teachers.forEach(teacher=>{
+                    const record=attendanceRecords.find(r=>r.id===student.id&&r.subject===teacher.subjectCode); 
+                    studentHtml+=`<div class="flex justify-between items-center text-sm"><p>${teacher.subject}</p>${record?'<span class="font-semibold text-green-600">Present</span>':'<span class="font-semibold text-red-500">Absent</span>'}</div>`}); 
+                    studentHtml+=`</div></div>`; 
+                reportEl.innerHTML+=studentHtml
+            });
+            updateLiveStatus();
+        }
+        function showModal(title,msg,icon='✅') { document.getElementById('modalTitle').textContent=title; document.getElementById('modalMessage').textContent=msg; document.getElementById('modalIcon').textContent=icon; document.getElementById('infoModal').style.display='flex'}
+        function closeModal() { document.getElementById('infoModal').style.display='none'}
+        function showDemoModal() { showModal('Demo Feature','This feature is for demonstration purposes only.','ℹ️')}
+    </script>
+</body>
+</html>
